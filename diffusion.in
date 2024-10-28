@@ -1,0 +1,65 @@
+# Save this as "diffusion.in"
+# Main LAMMPS input script for diffusion simulation using MEAM potential
+
+# Initialization
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+# System definition
+lattice         fcc 4.05
+region          box block 0 50 0 50 0 100
+create_box      5 box    # 5 atom types (Al, Cu, Fe, Mg, Si)
+
+# Create Al 2024 region (redistributing Mn percentage to other elements)
+region          alloy2024 block 0 50 0 50 0 45
+create_atoms    1 random 92500 341341 alloy2024  # Al atoms (92.5%)
+create_atoms    2 random 4500  127311 alloy2024  # Cu atoms (4.5%)
+create_atoms    3 random 1500  985123 alloy2024  # Mg atoms (1.5%)
+create_atoms    4 random 300   773123 alloy2024  # Si atoms (0.3%)
+create_atoms    5 random 200   998123 alloy2024  # Fe atoms (0.2%)
+
+# Create Al 2219 region (redistributing Mn percentage to other elements)
+region          alloy2219 block 0 50 0 50 45 90
+create_atoms    1 random 91700 112233 alloy2219  # Al atoms (91.7%)
+create_atoms    2 random 6800  445566 alloy2219  # Cu atoms (6.8%)
+create_atoms    4 random 700   990011 alloy2219  # Si atoms (0.7%)
+create_atoms    5 random 800   112244 alloy2219  # Fe atoms (0.8%)
+
+# MEAM potential definition - Note the space after * *
+pair_style      meam
+pair_coeff      * * Jelinek_2012_meamf.meam Jelinek_2012_meam.alsimgcufe Al Cu Mg Si Fe
+
+# Energy minimization
+minimize        1.0e-6 1.0e-8 1000 10000
+reset_timestep  0
+
+# Temperature and pressure settings
+variable        temp equal 715    # 442°C in Kelvin
+variable        pres equal 1.0    # pressure in bars
+variable        tdamp equal 100.0
+variable        pdamp equal 100.0
+
+# Set up velocity and fixes
+velocity        all create ${temp} 4928459 dist gaussian
+fix             1 all npt temp ${temp} ${temp} ${tdamp} iso ${pres} ${pres} ${pdamp}
+
+# Compute MSD for different atom types
+compute         msd1 type1 msd     # Al
+compute         msd2 type2 msd     # Cu
+compute         msd3 type3 msd     # Mg
+compute         msd4 type4 msd     # Si
+compute         msd5 type5 msd     # Fe
+
+# Output settings
+thermo          1000
+thermo_style    custom step temp press vol c_msd1[4] c_msd2[4] c_msd3[4] c_msd4[4] c_msd5[4]
+dump            1 all custom 1000 dump.lammpstrj id type x y z
+
+# Run settings
+timestep        0.002
+run            500000
+
+# Write final configuration
+write_data      final.data
